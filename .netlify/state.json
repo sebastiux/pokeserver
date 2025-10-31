@@ -1,0 +1,14 @@
+{
+	"geolocation": {
+		"data": {
+			"country": {
+				"code": "MX",
+				"name": "Mexico"
+			},
+			"timezone": "America/Mexico_City",
+			"latitude": 19.4371,
+			"longitude": -99.0111
+		},
+		"timestamp": 1761923678092
+	}
+}
