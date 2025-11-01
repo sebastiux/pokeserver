@@ -41,6 +41,7 @@ export const usePokemon = () => {
       pokemons: selectedTeam.map(p => ({
         id: p.id,
         name: p.name,
+        sprite: p.sprites?.front_default || p.sprites?.other?.['official-artwork']?.front_default || '', // ← AÑADIR SPRITE
         varo: p.customStats.varo,
         inteligencia: p.customStats.inteligencia,
         barrio: p.customStats.barrio,

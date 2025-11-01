@@ -19,13 +19,17 @@ exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
     
+    // LOG para debug
+    console.log('📥 Datos recibidos:', JSON.stringify(body, null, 2));
+    
     // Limpiar batallas viejas (más de 5 minutos)
     const now = Date.now();
     const queueKeys = await redis.lrange('waiting_queue', 0, -1);
     
     for (const battleId of queueKeys) {
-      const battle = await redis.get(`battle:${battleId}`);
-      if (battle) {
+      const battleData = await redis.get(`battle:${battleId}`);
+      if (battleData) {
+        const battle = typeof battleData === 'string' ? JSON.parse(battleData) : battleData;
         const age = now - new Date(battle.createdAt).getTime();
         if (age > 300000) {
           await redis.lrem('waiting_queue', 0, battleId);
@@ -38,7 +42,8 @@ exports.handler = async (event) => {
     const waitingBattleId = await redis.lpop('waiting_queue');
     
     if (waitingBattleId) {
-      const battle = await redis.get(`battle:${waitingBattleId}`);
+      const battleData = await redis.get(`battle:${waitingBattleId}`);
+      const battle = typeof battleData === 'string' ? JSON.parse(battleData) : battleData;
       
       if (battle && battle.status === 'waiting') {
         battle.player2 = body;
@@ -61,6 +66,7 @@ exports.handler = async (event) => {
           p2Wins = true;
         }
 
+        // IMPORTANTE: Incluir los pokemons en el resultado
         battle.result = {
           winner: winnerName,
           winnerPower: winnerPower,
@@ -70,24 +76,27 @@ exports.handler = async (event) => {
             teamName: battle.player1.teamName,
             totalPower: p1Power,
             isWinner: p1Wins,
+            pokemons: battle.player1.pokemons || [] // ← ESTO ES CRÍTICO
           },
           player2: {
             teamName: body.teamName,
             totalPower: p2Power,
             isWinner: p2Wins,
+            pokemons: body.pokemons || [] // ← ESTO ES CRÍTICO
           },
         };
 
         battle.status = 'finished';
         battle.matchedAt = new Date().toISOString();
         
-        // Guardar batalla actualizada en Redis con expiración de 10 minutos
-        await redis.set(`battle:${waitingBattleId}`, JSON.stringify(battle), { ex: 600 });
+        // LOG para debug
+        console.log('⚔️ MATCH! Battle:', waitingBattleId);
+        console.log('👤 Player 1 pokemons:', battle.player1.pokemons?.length || 0);
+        console.log('👤 Player 2 pokemons:', body.pokemons?.length || 0);
+        console.log('🏆 Resultado player1 pokemons:', battle.result.player1.pokemons?.length || 0);
+        console.log('🏆 Resultado player2 pokemons:', battle.result.player2.pokemons?.length || 0);
         
-        console.log(`⚔️ MATCH! Battle: ${waitingBattleId}`);
-        console.log(`👤 Player 1: ${battle.player1.teamName} (${p1Power})`);
-        console.log(`👤 Player 2: ${body.teamName} (${p2Power})`);
-        console.log(`🏆 Ganador: ${winnerName}`);
+        await redis.set(`battle:${waitingBattleId}`, JSON.stringify(battle), { ex: 600 });
 
         return {
           statusCode: 200,
@@ -105,17 +114,17 @@ exports.handler = async (event) => {
     const battleId = `battle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const newBattle = {
       battleId,
-      player1: body,
+      player1: body, // Guarda TODO el body, incluyendo pokemons
       status: 'waiting',
       createdAt: new Date().toISOString(),
     };
     
-    // Guardar en Redis con expiración de 10 minutos
+    // LOG para debug
+    console.log('🆕 Nueva batalla creada:', battleId);
+    console.log('👤 Player 1 pokemons guardados:', body.pokemons?.length || 0);
+    
     await redis.set(`battle:${battleId}`, JSON.stringify(newBattle), { ex: 600 });
     await redis.rpush('waiting_queue', battleId);
-    
-    console.log(`🆕 Nueva batalla creada: ${battleId}`);
-    console.log(`👤 Player 1: ${body.teamName} (${body.totalPower})`);
 
     return {
       statusCode: 200,
@@ -131,7 +140,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: error.message, stack: error.stack }),
     };
   }
 };

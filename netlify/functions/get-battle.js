@@ -43,6 +43,8 @@ exports.handler = async (event) => {
     console.log(`📊 Get battle ${battleId}: status=${battle.status}`);
     if (battle.result) {
       console.log(`🏆 Winner: ${battle.result.winner}`);
+      console.log(`👤 Player1 pokemons: ${battle.result.player1.pokemons?.length || 0}`);
+      console.log(`👤 Player2 pokemons: ${battle.result.player2.pokemons?.length || 0}`);
     }
 
     return {
