@@ -1,108 +1,120 @@
-import { useState } from 'react';
-import { createBattle, joinBattle, getBattle } from '../services/battleService';
+import { useState, useEffect } from 'react';
+import { findMatch, cancelSearch, getBattle } from '../services/battleService';
 
 export default function BattleView({ battleData }) {
-  const [battleId, setBattleId] = useState('');
-  const [joinBattleId, setJoinBattleId] = useState('');
+  const [searching, setSearching] = useState(false);
   const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
+  const [battleId, setBattleId] = useState('');
 
-  const handleCreateBattle = async () => {
-    setLoading(true);
-    try {
-      const response = await createBattle(battleData);
-      setBattleId(response.battleId);
-      // Iniciar polling
-      startPolling(response.battleId);
-    } catch (error) {
-      alert('Error creando batalla: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleJoinBattle = async () => {
-    if (!joinBattleId.trim()) {
-      alert('Ingresa un Battle ID');
-      return;
-    }
+  useEffect(() => {
+    let interval;
     
-    setLoading(true);
+    if (searching && battleId) {
+      // Solo hacer polling con GET (no con find-match)
+      interval = setInterval(async () => {
+        try {
+          const battle = await getBattle(battleId);
+          if (battle.status === 'finished' && battle.result) {
+            setResult(battle.result);
+            setSearching(false);
+            clearInterval(interval);
+          }
+        } catch (error) {
+          // Batalla no encontrada o error
+          console.log('Esperando...');
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [searching, battleId]);
+
+  const handleFindMatch = async () => {
+    setSearching(true);
     try {
-      const response = await joinBattle(joinBattleId, battleData);
-      setResult(response);
+      const response = await findMatch(battleData);
+      
+      if (response.matched && response.result) {
+        // ¡Match inmediato!
+        setResult(response.result);
+        setSearching(false);
+      } else {
+        // Esperando rival
+        setBattleId(response.battleId);
+        console.log('Esperando rival con ID:', response.battleId);
+      }
     } catch (error) {
-      alert('Error uniéndose a batalla: ' + error.message);
-    } finally {
-      setLoading(false);
+      alert('Error: ' + error.message);
+      setSearching(false);
     }
   };
 
-  const startPolling = async (id) => {
-    setPolling(true);
-    const maxAttempts = 30;
-    let attempts = 0;
-
-    const poll = setInterval(async () => {
-      attempts++;
+  const handleCancelSearch = async () => {
+    if (battleId) {
       try {
-        const battle = await getBattle(id);
-        if (battle.status === 'finished') {
-          setResult(battle.result);
-          setPolling(false);
-          clearInterval(poll);
-        }
-        if (attempts >= maxAttempts) {
-          setPolling(false);
-          clearInterval(poll);
-          alert('Tiempo de espera agotado');
-        }
+        await cancelSearch(battleId);
       } catch (error) {
-        console.error('Error polling:', error);
+        console.error('Error cancelando:', error);
       }
-    }, 2000);
-  };
-
-  const copyBattleId = () => {
-    navigator.clipboard.writeText(battleId);
-    alert('Battle ID copiado!');
+    }
+    setSearching(false);
+    setBattleId('');
   };
 
   if (result) {
     return (
-      <div className="mt-8 p-8 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-xl">
-        <h2 className="text-3xl font-bold text-center mb-6">
-          🏆 Resultado de la Batalla
+      <div className="mt-8 p-8 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-xl shadow-2xl">
+        <h2 className="text-4xl font-bold text-center mb-6 text-gray-800">
+          🏆 ¡Batalla Terminada!
         </h2>
         
-        <div className="bg-white rounded-lg p-6 mb-4">
-          <div className="text-center mb-6">
-            <p className="text-4xl font-bold text-yellow-600 mb-2">
+        <div className="bg-white rounded-xl p-8 mb-6 shadow-lg">
+          <div className="text-center mb-8">
+            <p className="text-5xl font-black text-yellow-600 mb-3 animate-bounce">
               {result.winner}
             </p>
-            <p className="text-2xl font-semibold text-gray-700">
-              ¡GANADOR!
+            <p className="text-3xl font-bold text-gray-700">
+              ¡GANADOR! 🎉
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className={`p-4 rounded-lg ${result.player1.isWinner ? 'bg-green-100 ring-4 ring-green-500' : 'bg-red-100'}`}>
-              <p className="font-bold text-lg">{result.player1.teamName}</p>
-              <p className="text-2xl font-bold">{result.player1.totalPower}</p>
-              {result.player1.isWinner && <p className="text-green-600 font-bold">✓ GANADOR</p>}
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className={`p-6 rounded-xl shadow-md transition-all ${
+              result.player1.isWinner 
+                ? 'bg-gradient-to-br from-green-100 to-green-200 ring-4 ring-green-500 scale-105' 
+                : 'bg-gradient-to-br from-red-100 to-red-200'
+            }`}>
+              <p className="font-bold text-xl mb-2">{result.player1.teamName}</p>
+              <p className="text-4xl font-black mb-3">{result.player1.totalPower}</p>
+              {result.player1.isWinner && (
+                <p className="text-green-700 font-bold text-2xl">✓ GANÓ</p>
+              )}
+              {!result.player1.isWinner && (
+                <p className="text-red-700 font-bold text-2xl">✗ PERDIÓ</p>
+              )}
             </div>
             
-            <div className={`p-4 rounded-lg ${result.player2.isWinner ? 'bg-green-100 ring-4 ring-green-500' : 'bg-red-100'}`}>
-              <p className="font-bold text-lg">{result.player2.teamName}</p>
-              <p className="text-2xl font-bold">{result.player2.totalPower}</p>
-              {result.player2.isWinner && <p className="text-green-600 font-bold">✓ GANADOR</p>}
+            <div className={`p-6 rounded-xl shadow-md transition-all ${
+              result.player2.isWinner 
+                ? 'bg-gradient-to-br from-green-100 to-green-200 ring-4 ring-green-500 scale-105' 
+                : 'bg-gradient-to-br from-red-100 to-red-200'
+            }`}>
+              <p className="font-bold text-xl mb-2">{result.player2.teamName}</p>
+              <p className="text-4xl font-black mb-3">{result.player2.totalPower}</p>
+              {result.player2.isWinner && (
+                <p className="text-green-700 font-bold text-2xl">✓ GANÓ</p>
+              )}
+              {!result.player2.isWinner && (
+                <p className="text-red-700 font-bold text-2xl">✗ PERDIÓ</p>
+              )}
             </div>
           </div>
 
-          <div className="text-center pt-4 border-t">
-            <p className="text-xl">
-              Diferencia de puntaje: <span className="font-bold text-blue-600">{result.scoreDifference}</span>
+          <div className="text-center pt-6 border-t-2 border-gray-300">
+            <p className="text-2xl font-semibold">
+              Diferencia: <span className="font-black text-blue-600">{result.scoreDifference}</span> puntos
             </p>
           </div>
         </div>
@@ -111,9 +123,8 @@ export default function BattleView({ battleData }) {
           onClick={() => {
             setResult(null);
             setBattleId('');
-            setJoinBattleId('');
           }}
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg"
+          className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-4 rounded-xl text-xl shadow-lg transform transition hover:scale-105"
         >
           🔄 Nueva Batalla
         </button>
@@ -122,74 +133,44 @@ export default function BattleView({ battleData }) {
   }
 
   return (
-    <div className="mt-8 space-y-6">
-      {/* Crear Batalla */}
-      <div className="p-6 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl">
-        <h3 className="text-2xl font-bold mb-4">⚔️ Crear Nueva Batalla</h3>
-        <p className="text-gray-600 mb-4">
-          Crea una batalla y comparte el código con tu oponente
-        </p>
-        
-        {!battleId ? (
-          <button
-            onClick={handleCreateBattle}
-            disabled={loading}
-            className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white font-bold py-4 rounded-lg text-lg"
-          >
-            {loading ? '⏳ Creando...' : '🎮 Crear Batalla'}
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <div className="bg-white p-4 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2">Battle ID:</p>
-              <div className="flex gap-2">
-                <code className="flex-1 bg-gray-900 text-green-400 p-3 rounded font-mono text-sm break-all">
-                  {battleId}
-                </code>
-                <button
-                  onClick={copyBattleId}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 rounded"
-                >
-                  📋
-                </button>
-              </div>
+    <div className="mt-8 p-8 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl shadow-xl">
+      <h2 className="text-3xl font-bold text-center mb-6">⚔️ Matchmaking</h2>
+      
+      {!searching ? (
+        <button
+          onClick={handleFindMatch}
+          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-8 rounded-xl text-3xl shadow-lg transform transition hover:scale-105 active:scale-95"
+        >
+          🎮 Buscar Rival
+        </button>
+      ) : (
+        <div className="space-y-6">
+          <div className="bg-white p-8 rounded-xl text-center shadow-lg">
+            <div className="mb-6">
+              <div className="text-7xl mb-4 animate-pulse">🔍</div>
+              <p className="text-2xl font-bold text-purple-600 mb-2">
+                Buscando rival...
+              </p>
+              <p className="text-gray-600 text-lg">
+                Abre otra pestaña para emparejar
+              </p>
             </div>
             
-            {polling && (
-              <div className="bg-yellow-100 border-2 border-yellow-400 p-4 rounded-lg text-center">
-                <p className="font-bold">⏳ Esperando oponente...</p>
-                <p className="text-sm text-gray-600">Comparte el Battle ID con tu rival</p>
-              </div>
-            )}
+            <div className="flex justify-center gap-3 mt-6">
+              <div className="w-4 h-4 bg-purple-500 rounded-full animate-bounce"></div>
+              <div className="w-4 h-4 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+              <div className="w-4 h-4 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Unirse a Batalla */}
-      <div className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl">
-        <h3 className="text-2xl font-bold mb-4">🎯 Unirse a Batalla</h3>
-        <p className="text-gray-600 mb-4">
-          ¿Te retaron? Ingresa el código de batalla
-        </p>
-        
-        <div className="space-y-3">
-          <input
-            type="text"
-            value={joinBattleId}
-            onChange={(e) => setJoinBattleId(e.target.value)}
-            placeholder="Pega aquí el Battle ID"
-            className="w-full p-4 border-2 border-gray-300 rounded-lg font-mono text-sm"
-          />
           
           <button
-            onClick={handleJoinBattle}
-            disabled={loading || !joinBattleId.trim()}
-            className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white font-bold py-4 rounded-lg text-lg"
+            onClick={handleCancelSearch}
+            className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-lg shadow-lg transition"
           >
-            {loading ? '⏳ Uniéndose...' : '⚔️ Unirse y Pelear'}
+            ❌ Cancelar Búsqueda
           </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

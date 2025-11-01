@@ -20,6 +20,7 @@ exports.handler = async (event) => {
       };
     }
 
+    // Acceder al mismo global que find-match usa
     global.battles = global.battles || {};
     const battle = global.battles[battleId];
 
@@ -37,7 +38,6 @@ exports.handler = async (event) => {
       body: JSON.stringify(battle),
     };
   } catch (error) {
-    console.error('Error:', error);
     return {
       statusCode: 500,
       headers,
