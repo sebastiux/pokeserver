@@ -1,3 +1,10 @@
+const { Redis } = require('@upstash/redis');
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -12,19 +19,21 @@ exports.handler = async (event) => {
   try {
     const { battleId } = JSON.parse(event.body);
     
-    global.waitingQueue = global.waitingQueue || [];
-    global.battles = global.battles || {};
-    
-    // Remover de la cola
-    const index = global.waitingQueue.indexOf(battleId);
-    if (index > -1) {
-      global.waitingQueue.splice(index, 1);
+    if (!battleId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'battleId requerido' }),
+      };
     }
+
+    // Remover de la cola
+    await redis.lrem('waiting_queue', 0, battleId);
     
     // Eliminar batalla
-    delete global.battles[battleId];
+    await redis.del(`battle:${battleId}`);
     
-    console.log('❌ Búsqueda cancelada:', battleId);
+    console.log(`🚫 Búsqueda cancelada: ${battleId}`);
 
     return {
       statusCode: 200,
@@ -32,6 +41,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({ success: true }),
     };
   } catch (error) {
+    console.error('❌ Error:', error);
     return {
       statusCode: 500,
       headers,

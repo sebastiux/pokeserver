@@ -1,3 +1,10 @@
+const { Redis } = require('@upstash/redis');
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -20,16 +27,22 @@ exports.handler = async (event) => {
       };
     }
 
-    // Acceder al mismo global que find-match usa
-    global.battles = global.battles || {};
-    const battle = global.battles[battleId];
+    const battleData = await redis.get(`battle:${battleId}`);
 
-    if (!battle) {
+    if (!battleData) {
+      console.log(`❌ Batalla no encontrada: ${battleId}`);
       return {
         statusCode: 404,
         headers,
         body: JSON.stringify({ error: 'Batalla no encontrada' }),
       };
+    }
+
+    const battle = typeof battleData === 'string' ? JSON.parse(battleData) : battleData;
+
+    console.log(`📊 Get battle ${battleId}: status=${battle.status}`);
+    if (battle.result) {
+      console.log(`🏆 Winner: ${battle.result.winner}`);
     }
 
     return {
@@ -38,6 +51,7 @@ exports.handler = async (event) => {
       body: JSON.stringify(battle),
     };
   } catch (error) {
+    console.error('❌ Error:', error);
     return {
       statusCode: 500,
       headers,
